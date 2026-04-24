@@ -2,14 +2,15 @@
 # Entry point: Pygame initialization, game state, main loop, and event handling.
 
 import pygame
+import random
 
 from config import (WIDTH, HEIGHT, FPS,
-                    WHITE_PIECES_INIT, WHITE_LOCATIONS_INIT,
-                    BLACK_PIECES_INIT, BLACK_LOCATIONS_INIT)
+                    WHITE_LOCATIONS_INIT, BLACK_LOCATIONS_INIT)
 from board import (load_images, draw_mode_selection, draw_board, draw_pieces,
-                draw_valid, draw_captured, draw_check, draw_game_over)
+                    draw_valid, draw_captured, draw_check, draw_game_over)
 from pieces import check_options
-from utils import is_in_check, is_checkmate, get_valid_moves
+from utils import (is_in_check, is_checkmate, get_valid_moves,
+                    check_insufficient_material, check_threefold)
 from ai import get_ai_move
 
 
@@ -28,8 +29,43 @@ timer       = pygame.time.Clock()
 
 # Load all piece images
 (white_images, small_white_images,
-black_images, small_black_images,
-white_pawn_img, black_pawn_img) = load_images()
+ black_images, small_black_images,
+ white_pawn_img, black_pawn_img) = load_images()
+
+
+# ---------------------------------------------------------------------------
+# Back-row shuffler (Fisher-Yates on the 4 non-king pieces + random king pos)
+# ---------------------------------------------------------------------------
+
+def shuffle_back_row():
+    """
+    Return a randomised back row of 5 pieces guaranteed to contain exactly
+    one king, one queen, one rook, one bishop, and one knight.
+    """
+    pieces_pool = ['rook', 'knight', 'queen', 'bishop']
+    random.shuffle(pieces_pool)
+    king_index = random.randint(0, 4)
+    pieces_pool.insert(king_index, 'king')
+    return pieces_pool
+
+
+# ---------------------------------------------------------------------------
+# Pawn promotion
+# ---------------------------------------------------------------------------
+
+def check_promotion(state, index, color):
+    """Promote a pawn that has reached the far rank to a queen (in-place)."""
+    wp = state['white_pieces']
+    wl = state['white_locations']
+    bp = state['black_pieces']
+    bl = state['black_locations']
+
+    if color == 'white':
+        if wp[index] == 'pawn' and wl[index][1] == 0:
+            wp[index] = 'queen'
+    else:
+        if bp[index] == 'pawn' and bl[index][1] == 4:
+            bp[index] = 'queen'
 
 
 # ---------------------------------------------------------------------------
@@ -37,11 +73,13 @@ white_pawn_img, black_pawn_img) = load_images()
 # ---------------------------------------------------------------------------
 
 def init_game_state():
-    """Return a fresh game-state dictionary."""
-    w_pieces = WHITE_PIECES_INIT[:]
-    w_locs   = WHITE_LOCATIONS_INIT[:]
-    b_pieces = BLACK_PIECES_INIT[:]
-    b_locs   = BLACK_LOCATIONS_INIT[:]
+    """Return a fresh game-state dictionary with shuffled back rows."""
+    w_back = shuffle_back_row()
+    b_back = shuffle_back_row()
+    w_pieces = w_back + ['pawn'] * 5
+    b_pieces = b_back + ['pawn'] * 5
+    w_locs   = list(WHITE_LOCATIONS_INIT)
+    b_locs   = list(BLACK_LOCATIONS_INIT)
     return {
         'white_pieces':           w_pieces,
         'white_locations':        w_locs,
@@ -53,10 +91,13 @@ def init_game_state():
         'selection':              100,  # 100 = nothing selected
         'valid_moves':            [],
         'counter':                0,    # flashing animation counter
-        'winner':                 '',
+        'winner':                 '',   # '', 'white', 'black', or 'draw'
         'game_over':              False,
         'game_mode':              0,    # 0=PvP, 1=Player(W) vs AI(B), 2=AI(W) vs Player(B)
         'game_mode_selected':     False,
+        'board_history':          [],   # list of (w_locs_tuple, b_locs_tuple, turn_step)
+        'halfmove_counter':       0,    # unused in game logic currently, reserved
+        'move_counter':           0,    # full-move counter
         'white_options':          check_options(w_pieces, w_locs, 'white', w_locs, b_locs),
         'black_options':          check_options(b_pieces, b_locs, 'black', w_locs, b_locs),
     }
@@ -91,6 +132,7 @@ def handle_click(state, click_coords):
     ts  = state['turn_step']
     sel = state['selection']
     vm  = state['valid_moves']
+    bh  = state['board_history']
 
     if ts <= 1:  # White's turn
         # Forfeit
@@ -106,8 +148,7 @@ def handle_click(state, click_coords):
 
         # Move to a valid square
         if click_coords in vm and sel != 100:
-            wl[sel] = click_coords
-            # Capture?
+            # Capture first, then move
             if click_coords in bl:
                 idx = bl.index(click_coords)
                 state['captured_pieces_white'].append(bp[idx])
@@ -115,16 +156,22 @@ def handle_click(state, click_coords):
                     state['winner'] = 'white'
                 bp.pop(idx)
                 bl.pop(idx)
-            # Refresh options and end turn
+
+            wl[sel] = click_coords
+            check_promotion(state, sel, 'white')
+
+            # Refresh options
             state['white_options'] = check_options(wp, wl, 'white', wl, bl)
             state['black_options'] = check_options(bp, bl, 'black', wl, bl)
+
+            # Record board state for repetition detection
+            bh.append((tuple(wl), tuple(bl), 2))
+
             state['turn_step'] = 2
             state['selection'] = 100
             state['valid_moves'] = []
-            if is_checkmate('black', wp, wl, bp, bl):
-                state['winner'] = 'white'
 
-    if ts > 1:  # Black's turn
+    elif ts > 1:  # Black's turn
         # Forfeit
         if click_coords in [(5, 5), (6, 5)]:
             state['winner'] = 'white'
@@ -138,8 +185,7 @@ def handle_click(state, click_coords):
 
         # Move to a valid square
         if click_coords in vm and sel != 100:
-            bl[sel] = click_coords
-            # Capture?
+            # Capture first, then move
             if click_coords in wl:
                 idx = wl.index(click_coords)
                 state['captured_pieces_black'].append(wp[idx])
@@ -147,20 +193,62 @@ def handle_click(state, click_coords):
                     state['winner'] = 'black'
                 wp.pop(idx)
                 wl.pop(idx)
-            # Refresh options and end turn
+
+            bl[sel] = click_coords
+            check_promotion(state, sel, 'black')
+
+            # Refresh options
             state['black_options'] = check_options(bp, bl, 'black', wl, bl)
             state['white_options'] = check_options(wp, wl, 'white', wl, bl)
+
+            # Record board state for repetition detection
+            bh.append((tuple(wl), tuple(bl), 0))
+
             state['turn_step'] = 0
             state['selection'] = 100
             state['valid_moves'] = []
-            if is_checkmate('white', wp, wl, bp, bl):
-                state['winner'] = 'black'
 
 
 def handle_restart(state):
-    """Reset game state for a new game."""
+    """Reset game state for a new game (returns to mode selection)."""
     fresh = init_game_state()
     state.update(fresh)
+
+
+# ---------------------------------------------------------------------------
+# Win / draw detection (called once per frame after moves)
+# ---------------------------------------------------------------------------
+
+def check_end_conditions(state):
+    """
+    Evaluate checkmate, stalemate, insufficient material, and threefold
+    repetition.  Sets state['winner'] when a terminal condition is found.
+    """
+    if state['winner'] != '' or state['game_over']:
+        return
+
+    wp = state['white_pieces']
+    wl = state['white_locations']
+    bp = state['black_pieces']
+    bl = state['black_locations']
+    ts = state['turn_step']
+    bh = state['board_history']
+
+    # Insufficient material
+    if check_insufficient_material(wp, bp):
+        state['winner'] = 'draw'
+        return
+
+    # Threefold repetition
+    if check_threefold(bh, wl, bl, ts):
+        state['winner'] = 'draw'
+        return
+
+    # Checkmate / stalemate
+    if ts <= 1 and is_checkmate('white', wp, wl, bp, bl):
+        state['winner'] = 'black' if is_in_check('white', wp, wl, bp, bl) else 'draw'
+    elif ts > 1 and is_checkmate('black', wp, wl, bp, bl):
+        state['winner'] = 'white' if is_in_check('black', wp, wl, bp, bl) else 'draw'
 
 
 # ---------------------------------------------------------------------------
@@ -178,12 +266,27 @@ def run_ai_if_needed(state):
     bl = state['black_locations']
     ts = state['turn_step']
     gm = state['game_mode']
+    bh = state['board_history']
+        # Determine if it's the AI's turn
+    ai_turn = (gm == 1 and ts == 2) or (gm == 2 and ts == 0)
+
+    if not ai_turn:
+        state['ai_move_time'] = None   # reset when it's not AI's turn
+        return
+
+    # Start the timer the moment it becomes AI's turn
+    if state['ai_move_time'] is None:
+        state['ai_move_time'] = pygame.time.get_ticks()
+        return
+
+    # Wait until 1 second has passed
+    if pygame.time.get_ticks() - state['ai_move_time'] < 1000:
+        return
 
     # Mode 1: AI plays black (turn_step == 2)
-    if gm == 1 and ts == 2:
+    if gm == 1 and ts == 2:      
         best_piece, best_move = get_ai_move(False, wp, wl, bp, bl)
         if best_piece is not None and best_move is not None:
-            bl[best_piece] = best_move
             if best_move in wl:
                 idx = wl.index(best_move)
                 state['captured_pieces_black'].append(wp[idx])
@@ -191,19 +294,21 @@ def run_ai_if_needed(state):
                     state['winner'] = 'white'
                 wp.pop(idx)
                 wl.pop(idx)
+            bl[best_piece] = best_move
+            check_promotion(state, best_piece, 'black')
             state['black_options'] = check_options(bp, bl, 'black', wl, bl)
             state['white_options'] = check_options(wp, wl, 'white', wl, bl)
+            bh.append((tuple(wl), tuple(bl), 0))
             state['turn_step'] = 0
             state['selection'] = 100
             state['valid_moves'] = []
-            if is_checkmate('white', wp, wl, bp, bl):
-                state['winner'] = 'black'
 
     # Mode 2: AI plays white (turn_step == 0)
     elif gm == 2 and ts == 0:
+        pygame.display.flip()          # ← render your move first
+        pygame.time.delay(2000)        # ← then wait 1 second
         best_piece, best_move = get_ai_move(True, wp, wl, bp, bl)
-        if best_piece is not None and best_move is not None:
-            wl[best_piece] = best_move
+        if best_piece is not None and best_move is not None:  
             if best_move in bl:
                 idx = bl.index(best_move)
                 state['captured_pieces_white'].append(bp[idx])
@@ -211,13 +316,14 @@ def run_ai_if_needed(state):
                     state['winner'] = 'white'
                 bp.pop(idx)
                 bl.pop(idx)
+            wl[best_piece] = best_move
+            check_promotion(state, best_piece, 'white')
             state['white_options'] = check_options(wp, wl, 'white', wl, bl)
             state['black_options'] = check_options(bp, bl, 'black', wl, bl)
+            bh.append((tuple(wl), tuple(bl), 2))
             state['turn_step'] = 2
             state['selection'] = 100
             state['valid_moves'] = []
-            if is_checkmate('black', wp, wl, bp, bl):
-                state['winner'] = 'white'
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +332,7 @@ def run_ai_if_needed(state):
 
 def main():
     state = init_game_state()
-    run = True
+    run   = True
 
     while run:
         timer.tick(FPS)
@@ -238,7 +344,7 @@ def main():
                 if event.type == pygame.QUIT:
                     run = False
                 handle_mode_selection(state, event)
-            continue  # don't draw the board until a mode is chosen
+            continue
 
         # ── Animation counter ─────────────────────────────────────────────
         state['counter'] = (state['counter'] + 1) % 30
@@ -293,6 +399,9 @@ def main():
 
         # ── AI turn ───────────────────────────────────────────────────────
         run_ai_if_needed(state)
+
+        # ── End-condition check ───────────────────────────────────────────
+        check_end_conditions(state)
 
         # ── Game over overlay ─────────────────────────────────────────────
         if state['winner'] != '':

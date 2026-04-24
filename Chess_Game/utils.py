@@ -1,5 +1,5 @@
 # utils.py
-# Utility functions: check detection, legal move filtering, and checkmate detection.
+# Utility functions: check detection, legal move filtering, checkmate/draw detection.
 # All functions receive board state explicitly — no globals used.
 
 from config import BOARD_SIZE
@@ -9,7 +9,7 @@ MAX_INDEX = BOARD_SIZE - 1
 
 
 # ---------------------------------------------------------------------------
-# Attack helpers
+# Sliding attack helper
 # ---------------------------------------------------------------------------
 
 def _sliding_attacks(pos, directions, friends, enemies):
@@ -32,46 +32,6 @@ def _sliding_attacks(pos, directions, friends, enemies):
     return attacks
 
 
-def _piece_attacks(piece, pos, attacker_friends, attacker_enemies):
-    """
-    Return all squares attacked by a single piece.
-    attacker_friends / attacker_enemies are from the attacker's perspective.
-    """
-    x, y = pos
-    if piece == 'pawn':
-        # Determine attack direction from which side the attacker is on.
-        # If the attacker's friends are white_locations the pawn faces up (dy=-1),
-        # but is_in_check always passes the enemy's own friend/enemy lists, so:
-        #   - When checking white's king, the attackers are black pieces whose
-        #     friends = black_locations → pawn attacks downward (dy=+1).
-        #   - When checking black's king, the attackers are white pieces whose
-        #     friends = white_locations → pawn attacks upward (dy=-1).
-        # We differentiate by a convention tag passed in via the wrapper below.
-        # This function therefore should NOT be called directly — use is_in_check.
-        return []  # handled inline in is_in_check for clarity
-    elif piece == 'knight':
-        return [
-            (x + dx, y + dy)
-            for dx, dy in [(1,2),(1,-2),(-1,2),(-1,-2),(2,1),(2,-1),(-2,1),(-2,-1)]
-        ]
-    elif piece == 'king':
-        return [
-            (x + dx, y + dy)
-            for dx, dy in [(1,0),(-1,0),(0,1),(0,-1),(1,1),(1,-1),(-1,1),(-1,-1)]
-        ]
-    elif piece == 'rook':
-        return _sliding_attacks(pos, [(0,1),(0,-1),(1,0),(-1,0)], attacker_friends, attacker_enemies)
-    elif piece == 'bishop':
-        return _sliding_attacks(pos, [(1,1),(1,-1),(-1,1),(-1,-1)], attacker_friends, attacker_enemies)
-    elif piece == 'queen':
-        return _sliding_attacks(
-            pos,
-            [(0,1),(0,-1),(1,0),(-1,0),(1,1),(1,-1),(-1,1),(-1,-1)],
-            attacker_friends, attacker_enemies
-        )
-    return []
-
-
 # ---------------------------------------------------------------------------
 # Check detection
 # ---------------------------------------------------------------------------
@@ -85,15 +45,30 @@ def is_in_check(color, w_pieces, w_locations, b_pieces, b_locations):
         if 'king' not in w_pieces:
             return False
         king_pos = w_locations[w_pieces.index('king')]
-        # Examine every black piece as an attacker
         for i in range(len(b_pieces)):
             piece = b_pieces[i]
-            pos = b_locations[i]
+            pos   = b_locations[i]
             if piece == 'pawn':
-                # Black pawns attack diagonally downward (increasing y)
+                # Black pawns attack diagonally downward (y increases)
                 attacks = [(pos[0] + 1, pos[1] + 1), (pos[0] - 1, pos[1] + 1)]
+            elif piece == 'knight':
+                attacks = [(pos[0] + a, pos[1] + b) for a, b in
+                           [(1,2),(1,-2),(-1,2),(-1,-2),(2,1),(2,-1),(-2,1),(-2,-1)]]
+            elif piece == 'king':
+                attacks = [(pos[0] + a, pos[1] + b) for a, b in
+                           [(1,0),(-1,0),(0,1),(0,-1),(1,1),(1,-1),(-1,1),(-1,-1)]]
+            elif piece == 'rook':
+                attacks = _sliding_attacks(pos, [(0,1),(0,-1),(1,0),(-1,0)],
+                                           w_locations, b_locations)
+            elif piece == 'bishop':
+                attacks = _sliding_attacks(pos, [(1,1),(1,-1),(-1,1),(-1,-1)],
+                                           w_locations, b_locations)
+            elif piece == 'queen':
+                attacks = _sliding_attacks(
+                    pos, [(0,1),(0,-1),(1,0),(-1,0),(1,1),(1,-1),(-1,1),(-1,-1)],
+                    w_locations, b_locations)
             else:
-                attacks = _piece_attacks(piece, pos, b_locations, w_locations)
+                attacks = []
             if king_pos in attacks:
                 return True
         return False
@@ -102,15 +77,30 @@ def is_in_check(color, w_pieces, w_locations, b_pieces, b_locations):
         if 'king' not in b_pieces:
             return False
         king_pos = b_locations[b_pieces.index('king')]
-        # Examine every white piece as an attacker
         for i in range(len(w_pieces)):
             piece = w_pieces[i]
-            pos = w_locations[i]
+            pos   = w_locations[i]
             if piece == 'pawn':
-                # White pawns attack diagonally upward (decreasing y)
+                # White pawns attack diagonally upward (y decreases)
                 attacks = [(pos[0] + 1, pos[1] - 1), (pos[0] - 1, pos[1] - 1)]
+            elif piece == 'knight':
+                attacks = [(pos[0] + a, pos[1] + b) for a, b in
+                           [(1,2),(1,-2),(-1,2),(-1,-2),(2,1),(2,-1),(-2,1),(-2,-1)]]
+            elif piece == 'king':
+                attacks = [(pos[0] + a, pos[1] + b) for a, b in
+                           [(1,0),(-1,0),(0,1),(0,-1),(1,1),(1,-1),(-1,1),(-1,-1)]]
+            elif piece == 'rook':
+                attacks = _sliding_attacks(pos, [(0,1),(0,-1),(1,0),(-1,0)],
+                                           b_locations, w_locations)
+            elif piece == 'bishop':
+                attacks = _sliding_attacks(pos, [(1,1),(1,-1),(-1,1),(-1,-1)],
+                                           b_locations, w_locations)
+            elif piece == 'queen':
+                attacks = _sliding_attacks(
+                    pos, [(0,1),(0,-1),(1,0),(-1,0),(1,1),(1,-1),(-1,1),(-1,-1)],
+                    b_locations, w_locations)
             else:
-                attacks = _piece_attacks(piece, pos, w_locations, b_locations)
+                attacks = []
             if king_pos in attacks:
                 return True
         return False
@@ -129,9 +119,9 @@ def filter_legal_moves(piece_index, color, moves, w_pieces, w_locations, b_piece
     legal = []
     for move in moves:
         new_w_pieces = w_pieces[:]
-        new_w_locs = w_locations[:]
+        new_w_locs   = w_locations[:]
         new_b_pieces = b_pieces[:]
-        new_b_locs = b_locations[:]
+        new_b_locs   = b_locations[:]
 
         if color == 'white':
             new_w_locs[piece_index] = move
@@ -152,12 +142,13 @@ def filter_legal_moves(piece_index, color, moves, w_pieces, w_locations, b_piece
 
 
 # ---------------------------------------------------------------------------
-# Checkmate detection
+# Checkmate / stalemate detection
 # ---------------------------------------------------------------------------
 
 def is_checkmate(color, w_pieces, w_locations, b_pieces, b_locations):
     """
     Return True if the given color has no legal moves (checkmate or stalemate).
+    The caller must separately call is_in_check to distinguish the two cases.
     """
     if color == 'white':
         pieces, locations = w_pieces, w_locations
@@ -166,10 +157,37 @@ def is_checkmate(color, w_pieces, w_locations, b_pieces, b_locations):
 
     all_moves = check_options(pieces, locations, color, w_locations, b_locations)
     for i in range(len(pieces)):
-        legal = filter_legal_moves(i, color, all_moves[i], w_pieces, w_locations, b_pieces, b_locations)
+        legal = filter_legal_moves(i, color, all_moves[i],
+                                   w_pieces, w_locations, b_pieces, b_locations)
         if legal:
-            return False  # at least one legal move exists
+            return False  # at least one legal move — not checkmate/stalemate
     return True
+
+
+# ---------------------------------------------------------------------------
+# Draw conditions
+# ---------------------------------------------------------------------------
+
+def check_insufficient_material(w_pieces, b_pieces):
+    """
+    Return True if neither side has enough material to deliver checkmate.
+    Covers: K vs K, K+B vs K, K+N vs K.
+    """
+    all_pieces = w_pieces + b_pieces
+    if len(all_pieces) == 2:
+        return True
+    if len(all_pieces) == 3 and ('bishop' in all_pieces or 'knight' in all_pieces):
+        return True
+    return False
+
+
+def check_threefold(board_history, w_locations, b_locations, turn_step):
+    """
+    Return True if the current board position has occurred 3 or more times.
+    A position is identified by (white_locations, black_locations, turn_step).
+    """
+    current_state = (tuple(w_locations), tuple(b_locations), turn_step)
+    return board_history.count(current_state) >= 3
 
 
 # ---------------------------------------------------------------------------
@@ -188,4 +206,5 @@ def get_valid_moves(selection, turn_step, white_options, black_options,
     else:
         raw_moves = black_options[selection]
         color = 'black'
-    return filter_legal_moves(selection, color, raw_moves, w_pieces, w_locations, b_pieces, b_locations)
+    return filter_legal_moves(selection, color, raw_moves,
+                              w_pieces, w_locations, b_pieces, b_locations)

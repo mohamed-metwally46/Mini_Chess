@@ -3,45 +3,47 @@
 # Each function receives the data it needs as parameters — no globals.
 
 import pygame
-from config import WIDTH, HEIGHT, BOARD_SIZE, CELL_SIZE, PIECE_LIST
+from config import (WIDTH, HEIGHT, BOARD_SIZE, CELL_SIZE, PIECE_LIST,
+                    LIGHT_WOOD, DARK_WOOD, STATUS_BAR_COLOR)
 
 
 def draw_mode_selection(screen, big_font, medium_font):
     """Render the game-mode selection screen."""
-    screen.fill('dark gray')
-    screen.blit(big_font.render('Select Game Mode', True, 'white'), (150, 100))
+    screen.fill('brown')
+    screen.blit(big_font.render('Select Game Mode', True, 'white'), (250, 100))
 
     # Player vs Player
-    pygame.draw.rect(screen, 'gray', [150, 200, 400, 60])
-    pygame.draw.rect(screen, 'gold', [150, 200, 400, 60], 3)
-    screen.blit(medium_font.render('Player vs Player', True, 'white'), (200, 215))
+    pygame.draw.rect(screen, 'brown', [150, 200, 400, 60])
+    pygame.draw.rect(screen, 'gold',  [150, 200, 400, 60], 3)
+    screen.blit(medium_font.render('Player vs Player', True, 'white'), (240, 215))
 
     # Player vs AI
-    pygame.draw.rect(screen, 'gray', [150, 300, 400, 60])
-    pygame.draw.rect(screen, 'gold', [150, 300, 400, 60], 3)
-    screen.blit(medium_font.render('You(White) vs AI(Black)', True, 'white'), (155, 315))
+    pygame.draw.rect(screen, 'brown', [150, 300, 400, 60])
+    pygame.draw.rect(screen, 'gold',  [150, 300, 400, 60], 3)
+    screen.blit(medium_font.render('You(White) vs AI(Black)', True, 'white'), (200, 315))
 
     # AI vs Player
-    pygame.draw.rect(screen, 'gray', [150, 400, 400, 60])
-    pygame.draw.rect(screen, 'gold', [150, 400, 400, 60], 3)
-    screen.blit(medium_font.render('AI(White) vs You(Black)', True, 'white'), (155, 415))
+    pygame.draw.rect(screen, 'brown', [150, 400, 400, 60])
+    pygame.draw.rect(screen, 'gold',  [150, 400, 400, 60], 3)
+    screen.blit(medium_font.render('AI(White) vs You(Black)', True, 'white'), (200, 415))
 
     pygame.display.flip()
 
 
 def draw_board(screen, turn_step, big_font, medium_font):
-    """Draw the checkerboard, grid lines, status bar, and forfeit button."""
+    """Draw the wood checkerboard, grid lines, status bar, and forfeit button."""
     board_px = BOARD_SIZE * CELL_SIZE  # 500
 
-    # Checkerboard squares
+    # Checkerboard — wood tones
+    screen.fill(LIGHT_WOOD)
     for row in range(BOARD_SIZE):
         for col in range(BOARD_SIZE):
             if (row + col) % 2 == 1:
-                pygame.draw.rect(screen, 'light gray',
+                pygame.draw.rect(screen, DARK_WOOD,
                                  [col * CELL_SIZE, row * CELL_SIZE, CELL_SIZE, CELL_SIZE])
 
     # Status bar at the bottom
-    pygame.draw.rect(screen, 'gray', [0, board_px, WIDTH, HEIGHT - board_px])
+    pygame.draw.rect(screen, STATUS_BAR_COLOR, [0, board_px, WIDTH, HEIGHT - board_px])
     pygame.draw.rect(screen, 'gold', [0, board_px, WIDTH, HEIGHT - board_px], 5)
 
     # Right panel border
@@ -54,7 +56,7 @@ def draw_board(screen, turn_step, big_font, medium_font):
         'Black: Select a Piece to Move!',
         'Black: Select a Destination!',
     ]
-    screen.blit(big_font.render(status_text[turn_step], True, 'black'), (20, 520))
+    screen.blit(big_font.render(status_text[turn_step], True, 'white'), (20, 520))
 
     # Grid lines
     for i in range(BOARD_SIZE + 1):
@@ -62,24 +64,24 @@ def draw_board(screen, turn_step, big_font, medium_font):
         pygame.draw.line(screen, 'black', (CELL_SIZE * i, 0), (CELL_SIZE * i, board_px), 2)
 
     # Forfeit button label
-    screen.blit(medium_font.render('FORFEIT', True, 'black'), (510, 530))
+    screen.blit(medium_font.render('FORFEIT', True, 'white'), (510, 530))
 
 
 def draw_pieces(screen, white_pieces, white_locations, black_pieces, black_locations,
-                turn_step, selection, white_images, black_images, white_pawn_img, black_pawn_img):
-    """Draw all pieces onto the board and highlight the selected piece."""
+                turn_step, selection, white_images, black_images,
+                white_pawn_img, black_pawn_img):
+    """Draw all pieces onto the board and highlight the selected piece in green."""
     # White pieces
     for i in range(len(white_pieces)):
         index = PIECE_LIST.index(white_pieces[i])
         x = white_locations[i][0] * 100
         y = white_locations[i][1] * 100
         if white_pieces[i] == 'pawn':
-            screen.blit(white_pawn_img, (x + 22, y + 30))
+            screen.blit(white_pawn_img, (x + 15, y + 15))
         else:
             screen.blit(white_images[index], (x + 10, y + 10))
-        # Highlight selected white piece
         if turn_step < 2 and selection == i:
-            pygame.draw.rect(screen, 'red', [x + 1, y + 1, 100, 100], 2)
+            pygame.draw.rect(screen, 'green', [x + 1, y + 1, 100, 100], 2)
 
     # Black pieces
     for i in range(len(black_pieces)):
@@ -87,12 +89,11 @@ def draw_pieces(screen, white_pieces, white_locations, black_pieces, black_locat
         x = black_locations[i][0] * 100
         y = black_locations[i][1] * 100
         if black_pieces[i] == 'pawn':
-            screen.blit(black_pawn_img, (x + 22, y + 30))
+            screen.blit(black_pawn_img, (x + 15, y + 15))
         else:
             screen.blit(black_images[index], (x + 10, y + 10))
-        # Highlight selected black piece
         if turn_step >= 2 and selection == i:
-            pygame.draw.rect(screen, 'blue', [x + 1, y + 1, 100, 100], 2)
+            pygame.draw.rect(screen, 'green', [x + 1, y + 1, 100, 100], 2)
 
 
 def draw_valid(screen, moves, turn_step):
@@ -104,11 +105,11 @@ def draw_valid(screen, moves, turn_step):
 
 
 def draw_captured(screen, captured_pieces_white, captured_pieces_black,
-                  small_black_images, small_white_images):
+                small_black_images, small_white_images):
     """
     Draw captured pieces in the right panel.
-    captured_pieces_white = black pieces captured by white (shown as small black icons).
-    captured_pieces_black = white pieces captured by black (shown as small white icons).
+    captured_pieces_white = black pieces captured by white.
+    captured_pieces_black = white pieces captured by black.
     """
     for i, piece in enumerate(captured_pieces_white):
         index = PIECE_LIST.index(piece)
@@ -123,7 +124,7 @@ def draw_check(screen, turn_step, counter,
                is_in_check_fn):
     """Flash a colored border around the king that is currently in check."""
     if counter >= 15:
-        return  # only flash during first half of the counter cycle
+        return  # only flash during the first half of the counter cycle
 
     if turn_step < 2:
         if is_in_check_fn('white', white_pieces, white_locations, black_pieces, black_locations):
@@ -142,10 +143,19 @@ def draw_check(screen, turn_step, counter,
 
 
 def draw_game_over(screen, winner, font):
-    """Overlay a game-over message in the centre of the board area."""
-    pygame.draw.rect(screen, 'black', [50, 200, 400, 70])
-    screen.blit(font.render(f'{winner} won the game!', True, 'white'), (60, 210))
-    screen.blit(font.render('Press ENTER to Restart!', True, 'white'), (60, 240))
+    """
+    Overlay a game-over message in the centre of the board area.
+    Supports 'white', 'black', or 'draw' as the winner value.
+    """
+    pygame.draw.rect(screen, 'black', [200, 200, 400, 70])
+    if winner == 'white':
+        text = font.render('White Wins!', True, 'white')
+    elif winner == 'black':
+        text = font.render('Black Wins!', True, 'white')
+    else:
+        text = font.render('It is a DRAW!', True, 'white')
+    screen.blit(text, (210, 210))
+    screen.blit(font.render('Press ENTER to Restart', True, 'white'), (210, 240))
 
 
 def load_images():
@@ -160,19 +170,19 @@ def load_images():
         return pygame.transform.scale(img, size)
 
     # Full-size images
-    white_pawn   = load('img/white pawn.png',   (65, 65))
-    white_queen  = load('img/white queen.png',  (80, 80))
-    white_king   = load('img/white king.png',   (80, 80))
-    white_knight = load('img/white knight.png', (80, 80))
-    white_rook   = load('img/white rook.png',   (80, 80))
-    white_bishop = load('img/white bishop.png', (80, 80))
+    white_pawn   = load('img/wp.png',   (65, 65))
+    white_queen  = load('img/wQ.png',  (80, 80))
+    white_king   = load('img/wK.png',   (80, 80))
+    white_knight = load('img/wN.png', (80, 80))
+    white_rook   = load('img/wR.png',   (80, 80))
+    white_bishop = load('img/wB.png', (80, 80))
 
-    black_pawn   = load('img/black pawn.png',   (65, 65))
-    black_queen  = load('img/black queen.png',  (80, 80))
-    black_king   = load('img/black king.png',   (80, 80))
-    black_knight = load('img/black knight.png', (80, 80))
-    black_rook   = load('img/black rook.png',   (80, 80))
-    black_bishop = load('img/black bishop.png', (80, 80))
+    black_pawn   = load('img/bp.png',   (65, 65))
+    black_queen  = load('img/bQ.png',  (80, 80))
+    black_king   = load('img/bK.png',   (80, 80))
+    black_knight = load('img/bN.png', (80, 80))
+    black_rook   = load('img/bR.png',   (80, 80))
+    black_bishop = load('img/bB.png', (80, 80))
 
     # Small versions for the captured-pieces panel
     white_pawn_s   = pygame.transform.scale(white_pawn,   (45, 45))
@@ -189,7 +199,7 @@ def load_images():
     black_rook_s   = pygame.transform.scale(black_rook,   (45, 45))
     black_bishop_s = pygame.transform.scale(black_bishop, (45, 45))
 
-    # Order: ['pawn', 'queen', 'king', 'knight', 'rook', 'bishop']
+    # Order matches PIECE_LIST: ['pawn', 'queen', 'king', 'knight', 'rook', 'bishop']
     white_images       = [white_pawn,   white_queen,   white_king,   white_knight,   white_rook,   white_bishop]
     small_white_images = [white_pawn_s, white_queen_s, white_king_s, white_knight_s, white_rook_s, white_bishop_s]
     black_images       = [black_pawn,   black_queen,   black_king,   black_knight,   black_rook,   black_bishop]
